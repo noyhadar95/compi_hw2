@@ -82,6 +82,32 @@ module Parser : PARSER = struct
 
 open PC;;
 
+
+(* parsers for Comments & Whitespaces *)
+let nt_star_whitespace = star nt_whitespace;;
+let nt_semicolon = char ';';;
+let nt_hashtag = char '#';;
+let no_return_func = fun e -> "";;
+
+let nt_line_comment = 
+	let nt_new_line = char '\n' in 
+	let nt_all_symbols = const (fun ch -> true) in 
+	let nt_comment = diff nt_all_symbols nt_new_line in 
+	let nt_comment = star nt_comment in 
+	let nt_comment = nt_comment in 
+	let nt_comment = caten nt_semicolon nt_comment in 
+	  pack nt_comment no_return_func;;
+
+let nt_sexpr_comment = 
+	let nt_start_of_comment = caten nt_hashtag nt_semicolon in 
+	let nt_comment = caten nt_start_of_comment nt_sexpr in 
+	  pack nt_comment no_return_func;;
+
+let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
+
+
+
+
 let read_sexpr string = raise X_not_yet_implemented;;
 
 let read_sexprs string = raise X_not_yet_implemented;;
