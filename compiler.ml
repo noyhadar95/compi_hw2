@@ -90,8 +90,7 @@ let nt_hashtag = char '#';;
 let no_return_func = fun e -> "";;
 let nt_line_comment = 
 	let nt_new_line = char '\n' in 
-	let nt_all_symbols = const (fun ch -> true) in 
-	let nt_comment = diff nt_all_symbols nt_new_line in 
+	let nt_comment = diff nt_any nt_new_line in 
 	let nt_comment = star nt_comment in 
 	let nt_comment = nt_comment in 
 	let nt_comment = caten nt_semicolon nt_comment in 
@@ -161,7 +160,15 @@ let nt_number =
 	disj (pack nt_fraction (fun e -> Number e)) 
 		(pack nt_int_packed (fun e -> Number e));;
 	
-	
+let nt_letters_ci = range_ci 'a' 'z';;
+let nt_punctuation = one_of "!$^*-_=+<>/?";;
+let nt_symbol = 
+	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.uppercase ch)) in 
+	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
+	let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
+	  disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed];;
+
+
 
 
 
