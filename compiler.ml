@@ -96,12 +96,13 @@ let nt_line_comment =
 	let nt_comment = nt_comment in 
 	let nt_comment = caten nt_semicolon nt_comment in 
 	  pack nt_comment no_return_func;;
-let nt_sexpr_comment = 
+(*let nt_sexpr_comment = 
 	let nt_start_of_comment = caten nt_hashtag nt_semicolon in 
 	let nt_comment = caten nt_start_of_comment nt_sexpr in 
-	  pack nt_comment no_return_func;;
+	  pack nt_comment no_return_func;;*)
 let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
 
+(* parsers for concrete syntax of sexprs *)
 let nt_bool = 
 	let nt_true = caten nt_hashtag (char_ci 't') in 
 	let nt_true = pack nt_true (fun e -> Bool true) in 
@@ -112,11 +113,8 @@ let nt_bool =
 let make_char_value base_char displacement =
   let base_char_value = Char.code base_char in
   fun ch -> (Char.code ch) - base_char_value + displacement;;
-
 let nt_digit_0_9 = pack (range '0' '9') (make_char_value '0' 0);;
-  
 let nt_digit_1_9 = pack (range '0' '9') (make_char_value '0' 0);;
-  
 let nt_nat =
   let nt = range '1' '9' in
   let nt = pack nt (make_char_value '0' 0) in
@@ -134,7 +132,35 @@ let nt_nat =
   let nt' = pack nt' (fun e -> 0) in
   let nt = disj nt nt' in
   nt;;
-
+let nt_int =
+  let nt = char '-' in
+  let nt = pack nt (fun e -> -1) in
+  let nt' = char '+' in
+  let nt' = pack nt' (fun e -> 1) in
+  let nt = disj nt nt' in
+  let nt = maybe nt in
+  let nt = pack nt (function | None -> 1 | Some(mult) -> mult) in 
+  let nt' = range '0' '9' in
+  let nt' = pack nt' (make_char_value '0' 0) in
+  let nt' = plus nt' in
+  let nt' = pack nt' (fun s -> List.fold_left (fun a b -> a * 10 + b) 0 s) in
+  let nt = caten nt nt' in
+  let nt = pack nt (fun (mult, n) -> (mult * n)) in
+  nt;;
+let nt_int_packed = pack nt_int (fun e -> Int e);;
+let nt_slash = char '/';;
+let car = (fun (a,b) -> a);;
+let nt_fraction = 
+	let nt_numerator = nt_int in 
+	let nt_numerator_slash = caten nt_numerator nt_slash in 
+	let nt_numerator_slash = pack nt_numerator_slash car in 
+	let nt_denominator = diff nt_nat char '0' in 
+	let nt_frac = caten nt_numerator_slash nt_denominator in 
+	  pack nt_frac (fun (numer, denom) -> Fraction {numerator=numer; denominator=denom});;
+let nt_number = 
+	disj (pack nt_fraction (fun e -> Number e)) 
+		(pack nt_int_packed (fun e -> Number e));;
+	
 	
 
 
