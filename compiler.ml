@@ -154,7 +154,7 @@ let nt_fraction =
 	let nt_numerator = nt_int in 
 	let nt_numerator_slash = caten nt_numerator nt_slash in 
 	let nt_numerator_slash = pack nt_numerator_slash car in 
-	let nt_denominator = diff nt_nat char '0' in 
+	let nt_denominator = diff nt_nat (char '0') in 
 	let nt_frac = caten nt_numerator_slash nt_denominator in 
 	  pack nt_frac (fun (numer, denom) -> Fraction {numerator=numer; denominator=denom});;
 let nt_number = 
