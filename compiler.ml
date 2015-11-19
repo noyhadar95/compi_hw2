@@ -88,7 +88,6 @@ let nt_star_whitespace = star nt_whitespace;;
 let nt_semicolon = char ';';;
 let nt_hashtag = char '#';;
 let no_return_func = fun e -> "";;
-
 let nt_line_comment = 
 	let nt_new_line = char '\n' in 
 	let nt_all_symbols = const (fun ch -> true) in 
@@ -97,14 +96,46 @@ let nt_line_comment =
 	let nt_comment = nt_comment in 
 	let nt_comment = caten nt_semicolon nt_comment in 
 	  pack nt_comment no_return_func;;
-
 let nt_sexpr_comment = 
 	let nt_start_of_comment = caten nt_hashtag nt_semicolon in 
 	let nt_comment = caten nt_start_of_comment nt_sexpr in 
 	  pack nt_comment no_return_func;;
-
 let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
 
+let nt_bool = 
+	let nt_true = caten nt_hashtag (char_ci 't') in 
+	let nt_true = pack nt_true (fun e -> Bool true) in 
+	let nt_false = caten nt_hashtag (char_ci 'f') in 
+	let nt_false = pack nt_false (fun e -> Bool false) in 
+	  disj nt_true nt_false;;
+
+let make_char_value base_char displacement =
+  let base_char_value = Char.code base_char in
+  fun ch -> (Char.code ch) - base_char_value + displacement;;
+
+let nt_digit_0_9 = pack (range '0' '9') (make_char_value '0' 0);;
+  
+let nt_digit_1_9 = pack (range '0' '9') (make_char_value '0' 0);;
+  
+let nt_nat =
+  let nt = range '1' '9' in
+  let nt = pack nt (make_char_value '0' 0) in
+  let nt' = range '0' '9' in
+  let nt' = pack nt' (make_char_value '0' 0) in
+  let nt' = star nt' in
+  let nt = caten nt nt' in
+  let nt = pack nt (fun (d, ds) -> (d :: ds)) in
+  let nt = pack nt (fun s -> List.fold_left (fun a b -> a * 10 + b) 0 s) in
+  let nt' = char '0' in
+  let nt'' = char '0' in
+  let nt''' = range '0' '9' in
+  let nt'' = caten nt'' nt''' in
+  let nt' = diff nt' nt'' in
+  let nt' = pack nt' (fun e -> 0) in
+  let nt = disj nt nt' in
+  nt;;
+
+	
 
 
 
