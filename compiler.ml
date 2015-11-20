@@ -104,6 +104,9 @@ let nt_line_comment =
 let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
 
 (* parsers for concrete syntax of sexprs *)
+let nt_letters_ci = range_ci 'a' 'z';;
+let nt_slash = char '/';;
+
 let nt_bool = 
 	let nt_true = caten nt_hashtag (char_ci 't') in 
 	let nt_true = pack nt_true (fun e -> Bool true) in 
@@ -183,7 +186,6 @@ let nt_int =
   let nt = pack nt (fun (mult, n) -> (mult * n)) in
   nt;;
 let nt_integer_hex = pack (disj nt_hex_signed nt_int) (fun e -> Int e);;
-let nt_slash = char '/';;
 let nt_fraction = 
 	let nt_numerator = disj nt_hex_signed nt_int in 
 	let nt_numerator_slash = caten nt_numerator nt_slash in 
@@ -195,7 +197,6 @@ let nt_number =
 	disj (pack nt_fraction (fun e -> Number e)) 
 		(pack nt_integer_hex (fun e -> Number e));;
 	
-let nt_letters_ci = range_ci 'a' 'z';;
 let nt_punctuation = one_of "!$^*-_=+<>/?";;
 let nt_symbol = 
 	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.uppercase ch)) in 
@@ -228,10 +229,27 @@ let nt_string =
 	let nt = pack nt car in 
 	  nt;;
 	
-let nt_char = 
 	
+let nt_char = 
+	let nt_visible_range_char = const (fun ch -> (Char.code ch) > 32) in 
+	let nt_named_chars = disj_list [pack (word_ci "newline") (fun s -> '\n');
+									pack (word_ci "return") (fun s -> '\r');
+									pack (word_ci "tab") (fun s -> '\t');
+									pack (word_ci "page") (fun s -> '\n')] in 
+	let nt_prefix = caten nt_hashtag nt_slash in
+	let nt = disj nt_named_chars nt_visible_range_char in 
+	let nt = caten nt_prefix nt in 
+	let nt = pack nt cdr in 
+	  nt;;
+(*	
+let nt_nil = 
+	let nt_left_par = char '(' in
+	let nt_right_par = char ')' in
+	caten nt_left_par *)
 
-
+	
+	
+	
 let read_sexpr string = raise X_not_yet_implemented;;
 
 let read_sexprs string = raise X_not_yet_implemented;;
