@@ -198,10 +198,14 @@ let nt_number =
 let nt_letters_ci = range_ci 'a' 'z';;
 let nt_punctuation = one_of "!$^*-_=+<>/?";;
 let nt_symbol = 
-	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> Symbol (String.make 1 (Char.uppercase ch))) in 
-	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> Symbol (string_of_int n)) in 
-	let nt_punctuation_packed = pack nt_punctuation (fun ch -> Symbol (String.make 1 ch)) in 
-	  disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed];;
+	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.uppercase ch)) in 
+	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
+	let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
+	let nt = disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed] in 
+	let nt = star nt in
+	let nt = pack nt (fun str_list -> List.fold_right (^) str_list "") in
+	let nt = pack nt (fun s -> Symbol s) in
+	  nt;;
 
 let nt_string = 
 	let nt_newline = char '\n' in 
