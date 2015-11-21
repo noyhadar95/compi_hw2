@@ -82,6 +82,177 @@ module Parser : PARSER = struct
 
 open PC;;
 
+let car = (fun (a,b) -> a);;
+let cdr = (fun (a,b) -> b);;
+
+(* parsers for Comments & Whitespaces *)
+let nt_star_whitespace = star nt_whitespace;;
+let nt_semicolon = char ';';;
+let nt_hashtag = char '#';;
+let no_return_func = fun e -> "";;
+let nt_line_comment = 
+	let nt_new_line = char '\n' in 
+	let nt_comment = diff nt_any nt_new_line in 
+	let nt_comment = star nt_comment in 
+	let nt_comment = nt_comment in 
+	let nt_comment = caten nt_semicolon nt_comment in 
+	  pack nt_comment no_return_func;;
+(*let nt_sexpr_comment = 
+	let nt_start_of_comment = caten nt_hashtag nt_semicolon in 
+	let nt_comment = caten nt_start_of_comment nt_sexpr in 
+	  pack nt_comment no_return_func;;*)
+let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
+
+(* parsers for concrete syntax of sexprs *)
+let nt_letters_ci = range_ci 'a' 'z';;
+let nt_slash = char '/';;
+let nt_back_slash = char '\\';;
+
+let nt_bool = 
+	let nt_true = caten nt_hashtag (char_ci 't') in 
+	let nt_true = pack nt_true (fun e -> Bool true) in 
+	let nt_false = caten nt_hashtag (char_ci 'f') in 
+	let nt_false = pack nt_false (fun e -> Bool false) in 
+	  disj nt_true nt_false;;
+
+let make_char_value base_char displacement =
+  let base_char_value = Char.code base_char in
+  fun ch -> (Char.code ch) - base_char_value + displacement;;
+let nt_digit_0_9 = pack (range '0' '9') (make_char_value '0' 0);;
+let nt_digit_1_9 = pack (range '1' '9') (make_char_value '0' 0);;
+let nt_nat =
+  let nt = nt_digit_1_9 in
+  let nt' = nt_digit_0_9 in
+  let nt' = star nt' in
+  let nt = caten nt nt' in
+  let nt = pack nt (fun (d, ds) -> (d :: ds)) in
+  let nt = pack nt (fun s -> List.fold_left (fun a b -> a * 10 + b) 0 s) in
+  let nt' = char '0' in
+  let nt'' = char '0' in
+  let nt''' = range '0' '9' in
+  let nt'' = caten nt'' nt''' in
+  let nt' = diff nt' nt'' in
+  let nt' = pack nt' (fun e -> 0) in
+  let nt = disj nt nt' in
+  nt;;
+let nt_hex_unsigned = 
+	let nt_a_f_ci = range_ci 'a' 'f' in 
+	let displacement = - (Char.code 'a') + (Char.code '9') + 1 in 
+	let nt_a_f_ci = pack nt_a_f_ci (make_char_value '0' displacement) in
+	let nt = nt_digit_1_9 in
+	let nt = disj nt nt_a_f_ci in 
+	let nt' = nt_digit_0_9 in
+	let nt' = disj nt' nt_a_f_ci in 
+	let nt' = star nt' in
+	let nt = caten nt nt' in
+	let nt = pack nt (fun (d, ds) -> (d :: ds)) in
+	let nt = pack nt (fun s -> List.fold_left (fun a b -> a * 16 + b) 0 s) in
+	let nt' = char '0' in
+	let nt'' = char '0' in
+	let nt''' = disj (range '0' '9') (range_ci 'a' 'f') in
+	let nt'' = caten nt'' nt''' in
+	let nt' = diff nt' nt'' in
+	let nt' = pack nt' (fun e -> 0) in
+	let nt = disj nt nt' in
+	let nt_0 = char '0' in 
+	let nt_x = char_ci 'x' in
+	let nt_0x = caten nt_0 nt_x in
+	let nt = caten nt_0x nt in
+	let nt = pack nt cdr in
+	  nt;;
+let nt_hex_signed = 
+	let nt = char '-' in
+	let nt = pack nt (fun e -> -1) in
+	let nt' = char '+' in
+	let nt' = pack nt' (fun e -> 1) in
+	let nt = disj nt nt' in
+	let nt = maybe nt in
+	let nt = pack nt (function | None -> 1 | Some(mult) -> mult) in
+	let nt_hex_num = caten nt nt_hex_unsigned in
+	let nt_hex_num = pack nt_hex_num (fun (mult, n) -> (mult * n)) in
+	  nt_hex_num;;
+let nt_int =
+  let nt = char '-' in
+  let nt = pack nt (fun e -> -1) in
+  let nt' = char '+' in
+  let nt' = pack nt' (fun e -> 1) in
+  let nt = disj nt nt' in
+  let nt = maybe nt in
+  let nt = pack nt (function | None -> 1 | Some(mult) -> mult) in 
+  let nt' = range '0' '9' in
+  let nt' = pack nt' (make_char_value '0' 0) in
+  let nt' = plus nt' in
+  let nt' = pack nt' (fun s -> List.fold_left (fun a b -> a * 10 + b) 0 s) in
+  let nt = caten nt nt' in
+  let nt = pack nt (fun (mult, n) -> (mult * n)) in
+  nt;;
+let nt_integer_hex = pack (disj nt_hex_signed nt_int) (fun e -> Int e);;
+let nt_fraction = 
+	let nt_numerator = disj nt_hex_signed nt_int in 
+	let nt_numerator_slash = caten nt_numerator nt_slash in 
+	let nt_numerator_slash = pack nt_numerator_slash car in 
+	let nt_denominator = diff nt_nat (char '0') in 
+	let nt_frac = caten nt_numerator_slash nt_denominator in 
+	  pack nt_frac (fun (numer, denom) -> Fraction {numerator=numer; denominator=denom});;
+let nt_number = 
+	disj (pack nt_fraction (fun e -> Number e)) 
+		(pack nt_integer_hex (fun e -> Number e));;
+	
+let nt_punctuation = one_of "!$^*-_=+<>/?";;
+let nt_symbol = 
+	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.lowercase ch)) in 
+	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
+	let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
+	let nt = disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed] in 
+	let nt = star nt in
+	let nt = pack nt (fun str_list -> List.fold_right (^) str_list "") in
+	let nt = pack nt (fun s -> Symbol s) in
+	  nt;;
+
+let nt_string = 
+	let nt_newline = char '\n' in 
+	let nt_return = char '\r' in 
+	let nt_tab = char '\t' in 
+	let nt_backslash = char '\\' in 
+	let nt_double_quote = char '\"' in 
+	let nt_quote_mark = char '"' in 
+	let nt_string_content = diff nt_any nt_quote_mark in 
+	let nt_string_content = disj_list [nt_newline; nt_return; nt_tab; nt_backslash;
+										nt_double_quote; nt_string_content] in 
+	let nt_string_content = star nt_string_content in 
+	let nt_string_content = pack nt_string_content (fun e -> String (List.fold_right (^) 
+																				(List.map (fun ch -> String.make 1 ch)
+																							e)
+																				"")) in 
+	let nt = caten nt_quote_mark nt_string_content in 
+	let nt = pack nt cdr in 
+	let nt = caten nt nt_quote_mark in 
+	let nt = pack nt car in 
+	  nt;;
+	
+	
+let nt_char = 
+	let nt_visible_range_char = const (fun ch -> (Char.code ch) > 32) in 
+	let nt_named_chars = disj_list [pack (word_ci "newline") (fun s -> '\n');
+									pack (word_ci "return") (fun s -> '\r');
+									pack (word_ci "tab") (fun s -> '\t');
+									pack (word_ci "page") (fun s -> '\n')] in 
+	let nt_prefix = caten nt_hashtag nt_back_slash in
+	let nt = disj nt_named_chars nt_visible_range_char in 
+	let nt = caten nt_prefix nt in 
+	let nt = pack nt cdr in 
+	  nt;;
+(*	
+let nt_nil = 
+	let nt_left_par = char '(' in
+	let nt_right_par = char ')' in
+	caten nt_left_par *)
+
+let nt_pair = 	
+
+	
+	
+	
 let read_sexpr string = raise X_not_yet_implemented;;
 
 let read_sexprs string = raise X_not_yet_implemented;;
