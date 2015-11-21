@@ -84,11 +84,13 @@ open PC;;
 
 let car = (fun (a,b) -> a);;
 let cdr = (fun (a,b) -> b);;
+let nt_left_par = char '(';;
+let nt_right_par = char ')';;
+let nt_semicolon = char ';';;
+let nt_hashtag = char '#';;
 
 (* parsers for Comments & Whitespaces *)
 let nt_star_whitespace = star nt_whitespace;;
-let nt_semicolon = char ';';;
-let nt_hashtag = char '#';;
 let no_return_func = fun e -> "";;
 let nt_line_comment = 
 	let nt_new_line = char '\n' in 
@@ -241,15 +243,60 @@ let nt_char =
 	let nt = disj nt_named_chars nt_visible_range_char in 
 	let nt = caten nt_prefix nt in 
 	let nt = pack nt cdr in 
+	let nt = pack nt (fun ch -> Char ch) in 
 	  nt;;
-(*	
+	
 let nt_nil = 
-	let nt_left_par = char '(' in
-	let nt_right_par = char ')' in
-	caten nt_left_par *)
+	let nt = caten nt_left_par nt_right_par in
+	let nt = pack nt (fun e -> Nil) in
+	  nt;;
 
-let nt_pair = 	
+let nt_pair = 
+	let nt_proper_list = 
+		let nt = star nt_sexpr in
+		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+		let nt = caten nt_left_par nt in 
+		let nt = pack nt cdr in 
+		let nt = caten nt nt_right_par in
+		let nt = pack nt car in 
+		  nt in
+	let nt_improper_list = 
+		let nt = plus nt_sexpr in
+		let nt = caten nt_left_par nt in 
+		let nt = pack nt cdr in 
+		let nt' = char '.' in
+		let nt = caten nt nt' in
+		let nt = pack nt car in
+		let nt = caten nt nt_sexpr in
+		let nt = pack nt (fun (e1,e2) -> e1@[e2]) in
+		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+		let nt = caten nt nt_right_par in
+		let nt = pack nt car in 
+		  nt in
+	  disj nt_proper_list nt_improper_list;;
+		  
 
+let nt_exp = 
+let rec nt_vector ()= 
+	let nt = star (delayed nt_sexpr) in
+	let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+	let nt' = caten nt_hashtag nt_left_par in 
+	let nt = caten nt' nt in 
+	let nt = pack nt cdr in 
+	let nt = caten nt nt_right_par in
+	let nt = pack nt car in 
+	  nt
+
+and  nt_sexpr () = 
+	disj_list [nt_bool;
+				nt_nil;
+				nt_number;
+				nt_char;
+				nt_string;
+				
+				(*nt_pair;*)
+				(delayed nt_vector);
+				nt_symbol;] in nt_sexpr ();;
 	
 	
 	
