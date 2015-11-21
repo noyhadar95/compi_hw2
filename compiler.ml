@@ -106,6 +106,7 @@ let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
 (* parsers for concrete syntax of sexprs *)
 let nt_letters_ci = range_ci 'a' 'z';;
 let nt_slash = char '/';;
+let nt_back_slash = char '\\';;
 
 let nt_bool = 
 	let nt_true = caten nt_hashtag (char_ci 't') in 
@@ -199,7 +200,7 @@ let nt_number =
 	
 let nt_punctuation = one_of "!$^*-_=+<>/?";;
 let nt_symbol = 
-	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.uppercase ch)) in 
+	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.lowercase ch)) in 
 	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
 	let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
 	let nt = disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed] in 
@@ -236,7 +237,7 @@ let nt_char =
 									pack (word_ci "return") (fun s -> '\r');
 									pack (word_ci "tab") (fun s -> '\t');
 									pack (word_ci "page") (fun s -> '\n')] in 
-	let nt_prefix = caten nt_hashtag nt_slash in
+	let nt_prefix = caten nt_hashtag nt_back_slash in
 	let nt = disj nt_named_chars nt_visible_range_char in 
 	let nt = caten nt_prefix nt in 
 	let nt = pack nt cdr in 
@@ -246,6 +247,8 @@ let nt_nil =
 	let nt_left_par = char '(' in
 	let nt_right_par = char ')' in
 	caten nt_left_par *)
+
+let nt_pair = 	
 
 	
 	
