@@ -91,19 +91,20 @@ let nt_hashtag = char '#';;
 
 (* parsers for Comments & Whitespaces *)
 let nt_star_whitespace = star nt_whitespace;;
-let no_return_func = fun e -> "";;
+let empty_str_func = fun e -> "";;
 let nt_line_comment = 
 	let nt_new_line = char '\n' in 
 	let nt_comment = diff nt_any nt_new_line in 
 	let nt_comment = star nt_comment in 
-	let nt_comment = nt_comment in 
 	let nt_comment = caten nt_semicolon nt_comment in 
-	  pack nt_comment no_return_func;;
-(*let nt_sexpr_comment = 
-	let nt_start_of_comment = caten nt_hashtag nt_semicolon in 
+	let nt_comment = caten nt_comment nt_new_line in 
+	  pack nt_comment empty_str_func;;
+let nt_sexpr_comment = 
+	let nt_start_of_comment = word "#;" in 
 	let nt_comment = caten nt_start_of_comment nt_sexpr in 
-	  pack nt_comment no_return_func;;*)
-let nt_comments_and_whitespaces = raise X_not_yet_implemented;;
+	  pack nt_comment empty_str_func;;
+let nt_comments_and_whitespaces = 
+	disj_list [nt_star_whitespace; nt_line_comment; nt_sexpr_comment];;
 
 (* parsers for concrete syntax of sexprs *)
 let nt_letters_ci = range_ci 'a' 'z';;
