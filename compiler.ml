@@ -89,34 +89,14 @@ let nt_right_par = char ')';;
 let nt_semicolon = char ';';;
 let nt_hashtag = char '#';;
 
-(* parsers for Comments & Whitespaces *)
 let nt_star_whitespace = star nt_whitespace;;
 let empty_str_func = fun e -> "";;
-let nt_line_comment = 
-	let nt_new_line = char '\n' in 
-	let nt_comment = diff nt_any nt_new_line in 
-	let nt_comment = star nt_comment in 
-	let nt_comment = caten nt_semicolon nt_comment in 
-	let nt_comment = caten nt_comment nt_new_line in 
-	  pack nt_comment empty_str_func;;
-let nt_sexpr_comment = 
-	let nt_start_of_comment = word "#;" in 
-	let nt_comment = caten nt_start_of_comment nt_sexpr in 
-	  pack nt_comment empty_str_func;;
-let nt_comments_and_whitespaces = 
-	disj_list [nt_star_whitespace; nt_line_comment; nt_sexpr_comment];;
 
-(* parsers for concrete syntax of sexprs *)
 let nt_letters_ci = range_ci 'a' 'z';;
 let nt_slash = char '/';;
 let nt_back_slash = char '\\';;
 
-let nt_bool = 
-	let nt_true = caten nt_hashtag (char_ci 't') in 
-	let nt_true = pack nt_true (fun e -> Bool true) in 
-	let nt_false = caten nt_hashtag (char_ci 'f') in 
-	let nt_false = pack nt_false (fun e -> Bool false) in 
-	  disj nt_true nt_false;;
+
 
 let make_char_value base_char displacement =
   let base_char_value = Char.code base_char in
@@ -198,90 +178,95 @@ let nt_fraction =
 	let nt_denominator = diff nt_denominator (char '0') in 
 	let nt_frac = caten nt_numerator_slash nt_denominator in 
 	  pack nt_frac (fun (numer, denom) -> Fraction {numerator=numer; denominator=denom});;
-let nt_number = 
-	disj (pack nt_fraction (fun e -> Number e)) 
-		(pack nt_integer_hex (fun e -> Number e));;
+
 	
 let nt_punctuation = one_of "!$^*-_=+<>/?";;
-let nt_symbol = 
-	let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.lowercase ch)) in 
-	let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
-	let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
-	let nt = disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed] in 
-	let nt = star nt in
-	let nt = pack nt (fun str_list -> List.fold_right (^) str_list "") in
-	let nt = pack nt (fun s -> Symbol s) in
-	let nt = caten nt nt_end_of_input in 
-	let nt = pack nt car in
-	  nt;;
 
-let nt_string = 
-	let nt_newline = char '\n' in 
-	let nt_return = char '\r' in 
-	let nt_tab = char '\t' in 
-	let nt_backslash = char '\\' in 
-	let nt_double_quote = char '\"' in 
-	let nt_quote_mark = char '"' in 
-	let nt_string_content = diff nt_any nt_quote_mark in 
-	let nt_string_content = disj_list [nt_newline; nt_return; nt_tab; nt_backslash;
-										nt_double_quote; nt_string_content] in 
-	let nt_string_content = star nt_string_content in 
-	let nt_string_content = pack nt_string_content (fun e -> String (List.fold_right (^) 
-																				(List.map (fun ch -> String.make 1 ch)
-																							e)
-																				"")) in 
-	let nt = caten nt_quote_mark nt_string_content in 
-	let nt = pack nt cdr in 
-	let nt = caten nt nt_quote_mark in 
-	let nt = pack nt car in 
-	  nt;;
-	
-	
-let nt_char = 
-	let nt_visible_range_char = const (fun ch -> (Char.code ch) > 32) in 
-	let nt_named_chars = disj_list [pack (word_ci "newline") (fun s -> '\n');
-									pack (word_ci "return") (fun s -> '\r');
-									pack (word_ci "tab") (fun s -> '\t');
-									pack (word_ci "page") (fun s -> Char.chr 12)] in 
-	let nt_prefix = caten nt_hashtag nt_back_slash in
-	let nt = disj nt_named_chars nt_visible_range_char in 
-	let nt = caten nt_prefix nt in 
-	let nt = pack nt cdr in 
-	let nt = pack nt (fun ch -> Char ch) in 
-	  nt;;
-	
-let nt_nil = 
-	let nt = caten nt_left_par nt_right_par in
-	let nt = pack nt (fun e -> Nil) in
-	  nt;;
 
-let nt_pair = 
-	let nt_proper_list = 
-		let nt = star nt_sexpr in
-		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
-		let nt = caten nt_left_par nt in 
-		let nt = pack nt cdr in 
-		let nt = caten nt nt_right_par in
-		let nt = pack nt car in 
-		  nt in
-	let nt_improper_list = 
-		let nt = plus nt_sexpr in
-		let nt = caten nt_left_par nt in 
-		let nt = pack nt cdr in 
-		let nt' = char '.' in
-		let nt = caten nt nt' in
+
+
+let rec nt_sexpr_thunk () = 	  
+
+	(* parsers for Comments & Whitespaces *)
+	let nt_line_comment = 
+		let nt_new_line = char '\n' in 
+		let nt_comment = diff nt_any nt_new_line in 
+		let nt_comment = star nt_comment in 
+		let nt_comment = caten nt_semicolon nt_comment in 
+		let nt_comment = caten nt_comment nt_new_line in 
+		  pack nt_comment empty_str_func in
+	let nt_sexpr_comment = 
+		let nt_start_of_comment = word "#;" in 
+		let nt_comment = caten nt_start_of_comment (delayed nt_sexpr_thunk) in 
+		  pack nt_comment empty_str_func in
+	let nt_comments_and_whitespaces = 
+		let nt_star_whitespace_packed = pack nt_whitespace empty_str_func in
+	  star (disj_list [nt_star_whitespace_packed; nt_line_comment; nt_sexpr_comment]) in
+
+	(* parsers for concrete syntax of sexprs *)
+	let nt_bool = 
+		let nt_true = caten nt_hashtag (char_ci 't') in 
+		let nt_true = pack nt_true (fun e -> Bool true) in 
+		let nt_false = caten nt_hashtag (char_ci 'f') in 
+		let nt_false = pack nt_false (fun e -> Bool false) in 
+		  disj nt_true nt_false in
+
+	let nt_number = 
+		disj (pack nt_fraction (fun e -> Number e)) 
+			(pack nt_integer_hex (fun e -> Number e)) in
+
+	let nt_symbol = 
+		let nt_letters_ci_packed = pack nt_letters_ci (fun ch -> String.make 1 (Char.lowercase ch)) in 
+		let nt_digit_0_9_packed = pack nt_digit_0_9 (fun n -> string_of_int n) in 
+		let nt_punctuation_packed = pack nt_punctuation (fun ch -> String.make 1 ch) in 
+		let nt = disj_list [nt_letters_ci_packed; nt_digit_0_9_packed; nt_punctuation_packed] in 
+		let nt = star nt in
+		let nt = pack nt (fun str_list -> List.fold_right (^) str_list "") in
+		let nt = pack nt (fun s -> Symbol s) in
+		let nt = caten nt nt_end_of_input in 
 		let nt = pack nt car in
-		let nt = caten nt nt_sexpr in
-		let nt = pack nt (fun (e1,e2) -> e1@[e2]) in
-		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
-		let nt = caten nt nt_right_par in
+		  nt in
+
+	let nt_string = 
+		let nt_newline = char '\n' in 
+		let nt_return = char '\r' in 
+		let nt_tab = char '\t' in 
+		let nt_backslash = char '\\' in 
+		let nt_double_quote = char '\"' in 
+		let nt_quote_mark = char '"' in 
+		let nt_string_content = diff nt_any nt_quote_mark in 
+		let nt_string_content = disj_list [nt_newline; nt_return; nt_tab; nt_backslash;
+											nt_double_quote; nt_string_content] in 
+		let nt_string_content = star nt_string_content in 
+		let nt_string_content = pack nt_string_content (fun e -> String (List.fold_right (^) 
+																					(List.map (fun ch -> String.make 1 ch)
+																								e)
+																					"")) in 
+		let nt = caten nt_quote_mark nt_string_content in 
+		let nt = pack nt cdr in 
+		let nt = caten nt nt_quote_mark in 
 		let nt = pack nt car in 
 		  nt in
-	  disj nt_proper_list nt_improper_list;;
 		  
+	let nt_char = 
+		let nt_visible_range_char = const (fun ch -> (Char.code ch) > 32) in 
+		let nt_named_chars = disj_list [pack (word_ci "newline") (fun s -> '\n');
+										pack (word_ci "return") (fun s -> '\r');
+										pack (word_ci "tab") (fun s -> '\t');
+										pack (word_ci "page") (fun s -> Char.chr 12)] in 
+		let nt_prefix = caten nt_hashtag nt_back_slash in
+		let nt = disj nt_named_chars nt_visible_range_char in 
+		let nt = caten nt_prefix nt in 
+		let nt = pack nt cdr in 
+		let nt = pack nt (fun ch -> Char ch) in 
+		  nt in
+		
+	let nt_nil = 
+		let nt = caten nt_left_par nt_right_par in
+		let nt = pack nt (fun e -> Nil) in
+		  nt in
 
-
-let rec nt_pair_or_vector_or_quotedform ()= 
+		  
 	let nt_vector = 
 		let nt = star (delayed nt_sexpr_thunk) in
 		let nt = pack nt (fun es -> Vector es) in
@@ -325,18 +310,22 @@ let rec nt_pair_or_vector_or_quotedform ()=
 		let nt_unquoted = caten (char ',') (delayed nt_sexpr_thunk) in
 		let nt_unquoted = pack nt_unquoted (fun (ch,e) ->Pair (Symbol "unquote", Pair (e,Nil))) in 
 		  disj_list [nt_quoted; nt_qquoted; nt_unquoted_spliced; nt_unquoted]  in 
-	  disj_list [nt_vector; nt_pair; nt_quote_like_forms] 
-				  
-and  nt_sexpr_thunk () = 
-	disj_list [nt_bool;
-				nt_nil;
-				nt_number;
-				nt_char;
-				nt_string;
-				
-				(*nt_pair;*)
-				(delayed nt_pair_or_vector_or_quotedform);
-				nt_symbol;] ;;
+	
+	let nt_disj_sexpr = 
+		disj_list [nt_bool;
+					nt_nil;
+					nt_number;
+					nt_char;
+					nt_string;
+					nt_vector;
+					nt_pair;
+					nt_quote_like_forms;
+					nt_symbol] in
+	let nt_sexpr_with_comments = caten nt_comments_and_whitespaces nt_disj_sexpr in 
+	let nt_sexpr_with_comments = pack nt_sexpr_with_comments cdr in
+	let nt_sexpr_with_comments = caten nt_sexpr_with_comments nt_comments_and_whitespaces in 
+	let nt_sexpr_with_comments = pack nt_sexpr_with_comments car in
+	  nt_sexpr_with_comments ;;
 
 let nt_sexpr = nt_sexpr_thunk ();;
 	
