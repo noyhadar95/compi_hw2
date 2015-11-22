@@ -279,11 +279,11 @@ let nt_pair =
 	  disj nt_proper_list nt_improper_list;;
 		  
 
-let nt_sexpr = 
-let rec nt_pair_or_vector ()= 
+
+let rec nt_pair_or_vector_or_quotedform ()= 
 	let nt_vector = 
 		let nt = star (delayed nt_sexpr_thunk) in
-		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+		let nt = pack nt (fun es -> Vector es) in
 		let nt' = caten nt_hashtag nt_left_par in 
 		let nt = caten nt' nt in 
 		let nt = pack nt cdr in 
@@ -313,7 +313,19 @@ let rec nt_pair_or_vector ()=
 			let nt = pack nt car in 
 			  nt in
 		  disj nt_proper_list nt_improper_list in
-	  disj nt_pair nt_vector 
+		  
+	let nt_quote_like_forms = 
+		let nt_quoted = caten (char '\'') (delayed nt_sexpr_thunk) in
+		let nt_quoted = pack nt_quoted (fun (ch,e) ->Pair (Symbol "quote", Pair (e,Nil))) in 
+		let nt_qquoted = caten (char '`') (delayed nt_sexpr_thunk) in
+		let nt_qquoted = pack nt_qquoted (fun (ch,e) ->Pair (Symbol "quasiquote", Pair (e,Nil))) in
+		let nt_unquoted_spliced = caten (word ",@") (delayed nt_sexpr_thunk) in
+		let nt_unquoted_spliced = pack nt_unquoted_spliced (fun (str,e) ->Pair (Symbol "unquote-splicing", Pair (e,Nil))) in
+		let nt_unquoted = caten (char ',') (delayed nt_sexpr_thunk) in
+		let nt_unquoted = pack nt_unquoted (fun (ch,e) ->Pair (Symbol "unquote", Pair (e,Nil))) in 
+		  disj_list [nt_quoted; nt_qquoted; nt_unquoted_spliced; nt_unquoted]  in 
+	  disj_list [nt_vector; nt_pair; nt_quote_like_forms] 
+				  
 and  nt_sexpr_thunk () = 
 	disj_list [nt_bool;
 				nt_nil;
@@ -322,17 +334,12 @@ and  nt_sexpr_thunk () =
 				nt_string;
 				
 				(*nt_pair;*)
-				(delayed nt_pair_or_vector);
-				nt_symbol;] in
-	nt_sexpr_thunk ();;
+				(delayed nt_pair_or_vector_or_quotedform);
+				nt_symbol;] ;;
 
+let nt_sexpr = nt_sexpr_thunk ();;
 	
-let nt_quote_like_forms = 
-	let nt_quoted = caten (char '\'') (delayed nt_sexpr_thunk) in
-	let nt_qquoted = caten (char '`') (delayed nt_sexpr_thunk) in
-	let nt_unquoted_spliced = caten (word ",@") (delayed nt_sexpr_thunk) in
-	let nt_unquoted = caten (char ',') (delayed nt_sexpr_thunk) in
-	  disj_list [nt_quoted; nt_qquoted; nt_unquoted_spliced; nt_unquoted];;
+
 	
 	
 let read_sexpr string = raise X_not_yet_implemented;;
