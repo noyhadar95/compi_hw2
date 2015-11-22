@@ -193,7 +193,8 @@ let nt_fraction =
 	let nt_numerator = disj nt_hex_signed nt_int in 
 	let nt_numerator_slash = caten nt_numerator nt_slash in 
 	let nt_numerator_slash = pack nt_numerator_slash car in 
-	let nt_denominator = diff nt_nat (char '0') in 
+	let nt_denominator = disj nt_hex_unsigned nt_nat in
+	let nt_denominator = diff nt_denominator (char '0') in 
 	let nt_frac = caten nt_numerator_slash nt_denominator in 
 	  pack nt_frac (fun (numer, denom) -> Fraction {numerator=numer; denominator=denom});;
 let nt_number = 
@@ -209,6 +210,8 @@ let nt_symbol =
 	let nt = star nt in
 	let nt = pack nt (fun str_list -> List.fold_right (^) str_list "") in
 	let nt = pack nt (fun s -> Symbol s) in
+	let nt = caten nt nt_end_of_input in 
+	let nt = pack nt car in
 	  nt;;
 
 let nt_string = 
@@ -238,7 +241,7 @@ let nt_char =
 	let nt_named_chars = disj_list [pack (word_ci "newline") (fun s -> '\n');
 									pack (word_ci "return") (fun s -> '\r');
 									pack (word_ci "tab") (fun s -> '\t');
-									pack (word_ci "page") (fun s -> '\n')] in 
+									pack (word_ci "page") (fun s -> Char.chr 12)] in 
 	let nt_prefix = caten nt_hashtag nt_back_slash in
 	let nt = disj nt_named_chars nt_visible_range_char in 
 	let nt = caten nt_prefix nt in 
@@ -276,18 +279,42 @@ let nt_pair =
 	  disj nt_proper_list nt_improper_list;;
 		  
 
-let nt_exp = 
-let rec nt_vector ()= 
-	let nt = star (delayed nt_sexpr) in
-	let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
-	let nt' = caten nt_hashtag nt_left_par in 
-	let nt = caten nt' nt in 
-	let nt = pack nt cdr in 
-	let nt = caten nt nt_right_par in
-	let nt = pack nt car in 
-	  nt
-
-and  nt_sexpr () = 
+let nt_sexpr = 
+let rec nt_pair_or_vector ()= 
+	let nt_vector = 
+		let nt = star (delayed nt_sexpr_thunk) in
+		let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+		let nt' = caten nt_hashtag nt_left_par in 
+		let nt = caten nt' nt in 
+		let nt = pack nt cdr in 
+		let nt = caten nt nt_right_par in
+		let nt = pack nt car in 
+		  nt in
+	let nt_pair = 
+		let nt_proper_list = 
+			let nt = star (delayed nt_sexpr_thunk) in
+			let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+			let nt = caten nt_left_par nt in 
+			let nt = pack nt cdr in 
+			let nt = caten nt nt_right_par in
+			let nt = pack nt car in 
+			  nt in
+		let nt_improper_list = 
+			let nt = plus (delayed nt_sexpr_thunk) in
+			let nt = caten nt_left_par nt in 
+			let nt = pack nt cdr in 
+			let nt' = char '.' in
+			let nt = caten nt nt' in
+			let nt = pack nt car in
+			let nt = caten nt (delayed nt_sexpr_thunk) in
+			let nt = pack nt (fun (e1,e2) -> e1@[e2]) in
+			let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+			let nt = caten nt nt_right_par in
+			let nt = pack nt car in 
+			  nt in
+		  disj nt_proper_list nt_improper_list in
+	  disj nt_pair nt_vector 
+and  nt_sexpr_thunk () = 
 	disj_list [nt_bool;
 				nt_nil;
 				nt_number;
@@ -295,9 +322,17 @@ and  nt_sexpr () =
 				nt_string;
 				
 				(*nt_pair;*)
-				(delayed nt_vector);
-				nt_symbol;] in nt_sexpr ();;
+				(delayed nt_pair_or_vector);
+				nt_symbol;] in
+	nt_sexpr_thunk ();;
+
 	
+let nt_quote_like_forms = 
+	let nt_quoted = caten (char '\'') (delayed nt_sexpr_thunk) in
+	let nt_qquoted = caten (char '`') (delayed nt_sexpr_thunk) in
+	let nt_unquoted_spliced = caten (word ",@") (delayed nt_sexpr_thunk) in
+	let nt_unquoted = caten (char ',') (delayed nt_sexpr_thunk) in
+	  disj_list [nt_quoted; nt_qquoted; nt_unquoted_spliced; nt_unquoted];;
 	
 	
 let read_sexpr string = raise X_not_yet_implemented;;
