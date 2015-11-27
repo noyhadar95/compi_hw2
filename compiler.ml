@@ -540,28 +540,136 @@ let rec expand_qq sexpr = match sexpr with
   | Nil | Symbol _ -> (Pair((Symbol("quote")), (Pair(sexpr, Nil))))
   | expr -> expr;;
 
- 
+
+ (* tag parser helper functions *)
+
+let rec process_scheme_improper_list s ret_nil ret_one ret_several =
+  match s with
+  | Symbol name -> (String name)::(ret_nil ())
+  | (Pair(sexpr, sexprs)) ->
+     process_scheme_list sexprs
+			 (fun () -> ret_one sexpr)
+			 (fun sexpr' -> ret_several [sexpr; sexpr'])
+			 (fun sexprs -> ret_several (sexpr :: sexprs))
+  | _ -> raise X_syntax_error;;
+  
+(* return a list of the form (opt_param :: paras_str_list) *)
+let scheme_improper_list_to_ocaml_list args = 
+  process_scheme_improper_list args
+		      (fun () -> [])
+		      (fun sexpr -> [sexpr])
+		      (fun sexprs -> sexprs);;
+	
+let rec is_proper_list = 
+	function
+	| Nil -> true
+	| (Pair(sexpr, sexprs)) -> is_proper_list sexprs
+	| _ -> false;;
+	
+
+let rec improper_list_to_tuple im_list list_acc = 
+	match im_list with
+	| Symbol name -> (list_acc, name)
+	| (Pair(sexpr, sexprs)) -> improper_list_to_tuple sexprs (list_acc@[sexpr])
+	| _ -> raise X_syntax_error;;
+	
+
+let param_proper_list_to_str_list p_list=
+	let param_ocaml_list = (scheme_list_to_ocaml_list p_list) in
+	List.map (function
+			  | Symbol(param_name) -> param_name
+			  | _ -> raise X_this_should_not_happen) 
+			param_ocaml_list;;
+			
+(* return a list of the form (opt_param, paras_str_list) *)
+let param_improper_list_to_str_list p_list=
+	let (param_ocaml_list, opt_param) = (improper_list_to_tuple p_list []) in
+	let mapped_params = List.map (function
+								  | Symbol(param_name) -> param_name
+								  | _ -> raise X_this_should_not_happen) 
+								param_ocaml_list in
+	(mapped_params, opt_param);;
+	
+
 let not_exists el list = 
 	if (andmap (fun a -> a<>el) list) then true
 	else false;;
+	
+
+let expand_and sexprs =
+  let sexprs_ocaml_list = scheme_list_to_ocaml_list sexprs in
+  let list_without_last = List.rev (List.tl (List.rev sexprs_ocaml_list)) in
+  let last_of_list = List.hd (List.rev sexprs_ocaml_list) in
+  let not_sexprs = List.map
+	       (fun sexpr -> (Pair((Symbol("not")), (Pair(sexpr, Nil))))) 
+		   list_without_last in
+  let not_sexprs = not_sexprs@[last_of_list] in
+  let body = List.fold_right
+	       (fun a b -> Pair(a, b))
+	       not_sexprs
+	       Nil in
+  (Pair((Symbol("or")), body));;
+	
+(* tag parser helper functions end *)
   
 let rec tag_parse_helper sexpr = 
 	match sexpr with
 	| Void -> raise X_this_should_not_happen
 	| Bool e -> Const (Bool e)
-	| Nil -> "()"
+	| Nil -> Const Nil
 	| Number (Int n) -> Const (Number (Int n))
 	| Number (Fraction {numerator = numer; denominator = denom}) -> Const (Number (Fraction {numerator = numer; denominator = denom}))
 	| Char c -> Const (Char c)
 	| String str -> Const (String str)
 	| (Pair((Symbol("quote")), (Pair(field, Nil)))) -> Const field
-	| (Symbol(v)) -> Var v
-	| (Pair((Symbol("unquote")), (Pair((Symbol(v)), Nil)))) when not_exists v reserved_word_list  -> Var v
-	| (Pair((Symbol("if")), (Pair(test, (Pair(dit, (Pair(dif, Nil)))))))) -> 
+	| (Symbol(sym)) when not_exists sym reserved_word_list -> Var sym (* !!!!!!!!!!make sure the when is needed*)(*symbol var*)
+	| (Pair((Symbol("unquote")), (Pair((Symbol(sym)), Nil)))) when not_exists sym reserved_word_list  -> Var sym (*unquoted var*)
+	| (Pair((Symbol("if")), (Pair(test, (Pair(dit, (Pair(dif, Nil)))))))) -> (*if then else*)
 		If ((tag_parse_helper test), (tag_parse_helper dit), (tag_parse_helper test))
+	| (Pair((Symbol("if")), (Pair(test, (Pair(dit, Nil)))))) -> (*if then*)
+		If ((tag_parse_helper test), (tag_parse_helper dit), Const(Void))
+	| (Pair((Symbol("lambda")), (Pair(params, (Pair(body, Nil)))))) -> (*lambda types*)
+		(match params with
+		| Nil -> LambdaSimple ([], tag_parse_helper body)
+		| Pair(_) -> 
+			if is_proper_list params then 
+				let param_str_list = param_proper_list_to_str_list params in
+				LambdaSimple (param_str_list, tag_parse_helper body) (*lambda simple*)
+			else let (param_str_list, opt_param) = param_improper_list_to_str_list params in
+				LambdaOpt(param_str_list, opt_param, tag_parse_helper body) (*lambda opt*)
+		| Symbol(opt_param)-> LambdaOpt([], opt_param, tag_parse_helper body) (*lambda variadic*)
+		| _ -> raise X_syntax_error)
+	| (Pair((Symbol("or")), args)) -> (*or*)
+		(match args with
+		| Nil ->  Or []
+		| (Pair(_, _)) -> 
+			let args_ocaml_list = (scheme_list_to_ocaml_list args) in
+			let mapped_args = List.map tag_parse_helper args_ocaml_list in
+			Or mapped_args
+		| _ -> raise X_syntax_error)
+	| (Pair((Symbol("and")), args)) -> (*and*)
+		(match args with
+		| Nil -> tag_parse_helper (Pair((Symbol("or")), (Pair((Bool true), Nil))))
+		| (Pair(_, _)) -> tag_parse_helper (expand_and args)
+		| _ -> raise X_syntax_error)
+	| (Pair((Symbol("define")), (Pair(name, (Pair(expr, Nil)))))) -> (*define*)
+		let var = (match name with
+				| Symbol sym -> Var sym
+				| _ -> raise X_syntax_error) in
+		let value = (tag_parse_helper expr) in
+		Def (var, value)
 	
-	| Symbol s -> Var s
-	| Pair(e1, Nil) -> "(" ^ (sexpr_to_string_helper e1) ^ ")"
+	| (Pair(op, args)) -> (*application*)
+		(match args with
+		| Nil ->  Applic (tag_parse_helper op , [])
+		| (Pair(_, _)) -> 
+			let args_ocaml_list = (scheme_list_to_ocaml_list args) in
+			let mapped_args = List.map tag_parse_helper args_ocaml_list in
+			Applic (tag_parse_helper op , mapped_args)
+		| _ -> raise X_syntax_error
+		);;
+
+
 	| Pair(Symbol name, Pair(e1, Nil)) -> (match name with 
 					| "quote" -> "'" ^ (sexpr_to_string_helper e1)
 					| "quasiquote" -> "`" ^ (sexpr_to_string_helper e1)
@@ -569,7 +677,6 @@ let rec tag_parse_helper sexpr =
 					| "unquote" -> "," ^ (sexpr_to_string_helper e1)
 					| _ -> let e2 = Pair(e1, Nil) in 
 							"(" ^ (sexpr_to_string_helper e1) ^ " " ^ (sexpr_to_string_helper e2) ^ ")")
-	| Pair(e1, e2) -> "(" ^ (sexpr_to_string_helper e1) ^ " " ^ (sexpr_to_string_helper e2) ^ ")"
 	| Vector es -> "#(" ^ (List.fold_right (fun s1 s2 -> s1^" "^s2) (List.map sexpr_to_string_helper es) "") ^ ")";;
 
 
