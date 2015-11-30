@@ -101,8 +101,8 @@ and pair_to_string sexpr =
 	(*returns application of sexpr_to_string_helper on every exp in the pair list*)
 	match sexpr with
 	| Pair(e1, Nil) -> (sexpr_to_string_helper e1) (*proper list*)
-	| Pair(e1, Pair(e2,_)) -> (sexpr_to_string_helper e1) ^ (pair_to_string pair)
-	| Pair(e1, e2) -> (sexpr_to_string_helper e1) ^ "." ^(sexpr_to_string_helper e2) (*improper list*);;
+	| Pair(e1, Pair(e2,rest)) -> (sexpr_to_string_helper e1) ^ " " ^ (pair_to_string (Pair(e2,rest)))
+	| Pair(e1, e2) -> (sexpr_to_string_helper e1) ^ " . " ^(sexpr_to_string_helper e2) (*improper list*);;
 	
 let sexpr_to_string sexpr = sexpr_to_string_helper sexpr;;
 	
