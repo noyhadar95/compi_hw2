@@ -324,7 +324,10 @@ and nt_pair str =
 			let nt = pack nt car in
 			let nt = caten nt nt_sexpr in
 			let nt = pack nt (fun (e1,e2) -> e1@[e2]) in
-			let nt = pack nt (fun es -> List.fold_right (fun a b -> Pair (a, b)) es Nil) in
+			let nt = pack nt (fun es -> 
+						let es_last = List.hd (List.rev es) in
+						let es_no_last = List.rev (List.tl (List.rev es)) in
+						List.fold_right (fun a b -> Pair (a, b)) es_no_last es_last) in
 			let nt = caten nt nt_right_par in
 			let nt = pack nt car in 
 			  nt in
@@ -581,7 +584,7 @@ let param_proper_list_to_str_list p_list=
 			  | _ -> raise X_this_should_not_happen) 
 			param_ocaml_list;;
 			
-(* return a list of the form (opt_param, paras_str_list) *)
+(* return a list of the form (paras_str_list, opt_param) *)
 let param_improper_list_to_str_list p_list=
 	let (param_ocaml_list, opt_param) = (improper_list_to_tuple p_list []) in
 	let mapped_params = List.map (function
@@ -596,25 +599,54 @@ let not_exists el list =
 	else false;;
 	
 
-let expand_and sexprs =
-  let sexprs_ocaml_list = scheme_list_to_ocaml_list sexprs in
-  let list_without_last = List.rev (List.tl (List.rev sexprs_ocaml_list)) in
-  let last_of_list = List.hd (List.rev sexprs_ocaml_list) in
-  let not_sexprs = List.map
-	       (fun sexpr -> (Pair((Symbol("not")), (Pair(sexpr, Nil))))) 
-		   list_without_last in
-  let not_sexprs = not_sexprs@[last_of_list] in
-  let body = List.fold_right
-	       (fun a b -> Pair(a, b))
-	       not_sexprs
-	       Nil in
-  (Pair((Symbol("or")), body));;
+let expand_and val1 rest = 
+	match rest with
+	| [] -> val1
+	| car_rest::[] -> 
+		(Pair((Symbol("if")), (Pair(val1, (Pair((Pair((Pair((Symbol("lambda")), (Pair(Nil, (Pair((Pair((Symbol("and")), (Pair(car_rest, Nil)))), Nil)))))), Nil)), (Pair(val1, Nil))))))))
+	| car_rest::cdr_rest -> 
+		let scheme_cdr_rest = List.fold_right (fun a b -> Pair (a, b)) cdr_rest Nil in
+		(Pair((Symbol("if")), (Pair(val1, (Pair((Pair((Pair((Symbol("lambda")), (Pair(Nil, (Pair((Pair((Symbol("and")), (Pair(car_rest, scheme_cdr_rest)))), Nil)))))), Nil)), (Pair(val1, Nil))))))));;
+ 
+let expand_mit_style_define name args expr  =
+	(Pair((Symbol("define")), (Pair(name, (Pair((Pair((Symbol("lambda")), (Pair(args, (Pair(expr, Nil)))))), Nil))))));;
+	
+	
+let expand_cond test1 exprs rest =
+	let exprs = match exprs with | Nil -> (Pair(test1, Nil)) | _ -> exprs in
+	let begin_exprs = (Pair((Symbol("begin")), exprs)) in
+	match rest with 
+	| Nil -> 
+		(match test1 with
+		| Symbol("else") -> begin_exprs
+		| _ -> (Pair((Symbol("if")), (Pair(test1, (Pair(begin_exprs, (Pair(Void, Nil))))))))
+		)
+	| (Pair((Symbol("else")), (Pair(e, Nil)))) -> 
+		(Pair((Symbol("if")), (Pair(test1, (Pair(begin_exprs, (Pair(e, Nil))))))))
+	| _ -> 
+		(Pair((Symbol("if")), (Pair(test1, (Pair(begin_exprs, (Pair((Pair((Symbol("cond")), rest)), Nil))))))));;
+
+
+let expand_let ribs sexprs =
+	let ribs = scheme_list_to_ocaml_list ribs in
+	let params = List.map (function
+			| (Pair(name, (Pair(expr, Nil)))) -> name
+			| _ -> raise X_this_should_not_happen) ribs in
+	let args = List.map
+		   (function
+			| (Pair(name, (Pair(expr, Nil)))) -> expr
+			| _ -> raise X_this_should_not_happen) ribs in 
+	let scheme_params = List.fold_right (fun a b -> Pair (a, b)) params Nil in
+	let scheme_args = List.fold_right (fun a b -> Pair (a, b)) args Nil in
+	(Pair((Pair((Symbol("lambda")), (Pair(scheme_params, sexprs)))), scheme_args));;
 	
 (* tag parser helper functions end *)
   
 let rec tag_parse_helper sexpr = 
 	match sexpr with
-	| Void -> raise X_this_should_not_happen
+	
+	(*Constants*)
+	| Void -> Const Void
 	| Bool e -> Const (Bool e)
 	| Nil -> Const Nil
 	| Number (Int n) -> Const (Number (Int n))
@@ -622,26 +654,36 @@ let rec tag_parse_helper sexpr =
 	| Char c -> Const (Char c)
 	| String str -> Const (String str)
 	| (Pair((Symbol("quote")), (Pair(field, Nil)))) -> Const field
-	| (Symbol(sym)) when not_exists sym reserved_word_list -> Var sym (* !!!!!!!!!!make sure the when is needed*)(*symbol var*)
-	| (Pair((Symbol("unquote")), (Pair((Symbol(sym)), Nil)))) when not_exists sym reserved_word_list  -> Var sym (*unquoted var*)
+	
+	(*Variables*)
+	| (Symbol(sym)) when not_exists sym reserved_word_list -> Var sym (*symbol var*)
+	
+	(*Conditionals*)
 	| (Pair((Symbol("if")), (Pair(test, (Pair(dit, (Pair(dif, Nil)))))))) -> (*if then else*)
-		If ((tag_parse_helper test), (tag_parse_helper dit), (tag_parse_helper test))
+		If ((tag_parse_helper test), (tag_parse_helper dit), (tag_parse_helper dif))
 	| (Pair((Symbol("if")), (Pair(test, (Pair(dit, Nil)))))) -> (*if then*)
 		If ((tag_parse_helper test), (tag_parse_helper dit), Const(Void))
-	| (Pair((Symbol("lambda")), (Pair(params, (Pair(body, Nil)))))) -> (*lambda types*)
+		
+	(*Lambda Expressions*)
+	| (Pair((Symbol("lambda")), (Pair(params, body)))) -> (*lambda types*)
+		let body_ocaml_list = (scheme_list_to_ocaml_list body) in
+		let mapped_body = List.map tag_parse_helper body_ocaml_list in
+		let seq_body = Seq mapped_body in
 		(match params with
-		| Nil -> LambdaSimple ([], tag_parse_helper body)
+		| Nil -> LambdaSimple ([], seq_body)
 		| Pair(_) -> 
 			if is_proper_list params then 
 				let param_str_list = param_proper_list_to_str_list params in
-				LambdaSimple (param_str_list, tag_parse_helper body) (*lambda simple*)
+				LambdaSimple (param_str_list, seq_body) (*lambda simple*)
 			else let (param_str_list, opt_param) = param_improper_list_to_str_list params in
-				LambdaOpt(param_str_list, opt_param, tag_parse_helper body) (*lambda opt*)
-		| Symbol(opt_param)-> LambdaOpt([], opt_param, tag_parse_helper body) (*lambda variadic*)
+				LambdaOpt(param_str_list, opt_param, seq_body) (*lambda opt*)
+		| Symbol(opt_param)-> LambdaOpt([], opt_param, seq_body) (*lambda variadic*)
 		| _ -> raise X_syntax_error)
+	
+	(*Disjunctions*)
 	| (Pair((Symbol("or")), args)) -> (*or*)
 		(match args with
-		| Nil ->  Or []
+		| Nil ->  Const (Bool false)
 		| (Pair(_, _)) -> 
 			let args_ocaml_list = (scheme_list_to_ocaml_list args) in
 			let mapped_args = List.map tag_parse_helper args_ocaml_list in
@@ -649,16 +691,65 @@ let rec tag_parse_helper sexpr =
 		| _ -> raise X_syntax_error)
 	| (Pair((Symbol("and")), args)) -> (*and*)
 		(match args with
-		| Nil -> tag_parse_helper (Pair((Symbol("or")), (Pair((Bool true), Nil))))
-		| (Pair(_, _)) -> tag_parse_helper (expand_and args)
+		| Nil -> Const (Bool true)
+		| (Pair(_, _)) -> 
+			let args_ocaml_list = (scheme_list_to_ocaml_list args) in
+			let val1 = List.hd args_ocaml_list in
+			let rest = List.tl args_ocaml_list in
+			let expanded_and = expand_and val1 rest in
+			tag_parse_helper expanded_and
 		| _ -> raise X_syntax_error)
-	| (Pair((Symbol("define")), (Pair(name, (Pair(expr, Nil)))))) -> (*define*)
+	
+	(*Definitions*)
+	| (Pair((Symbol("define")), (Pair((Pair(name, args)), (Pair(expr, Nil)))))) -> (*MIT-style define*)
+		let simple_define =  expand_mit_style_define name args expr in
+			tag_parse_helper simple_define
+	| (Pair((Symbol("define")), (Pair(name, (Pair(expr, Nil)))))) -> (*simple define*)
 		let var = (match name with
 				| Symbol sym -> Var sym
 				| _ -> raise X_syntax_error) in
 		let value = (tag_parse_helper expr) in
 		Def (var, value)
+		
+	(*set!*)
+	| (Pair((Symbol("set!")), (Pair(name, (Pair(expr, Nil)))))) ->
+		let var = (match name with
+				| Symbol sym -> Var sym
+				| _ -> raise X_syntax_error) in
+		let value = (tag_parse_helper expr) in
+		Set (var, value)
+		
+	(*begin*)
+	| (Pair((Symbol("begin")), exprs)) ->
+		let exprs_ocaml_list = (scheme_list_to_ocaml_list exprs) in
+		let mapped_exprs = List.map tag_parse_helper exprs_ocaml_list in
+		Seq mapped_exprs
+		
+	(*Syntactic sugar*)
 	
+	(*Quasiquoted expressions*)
+	| (Pair((Symbol("quasiquote")), (Pair(sexpr, Nil)))) ->
+		let expanded_sexpr = expand_qq sexpr in
+		tag_parse_helper expanded_sexpr
+	(*cond*)
+	| (Pair((Symbol("cond")), (Pair((Pair(test1, exprs)), rest)))) ->
+		let expanded_cond = expand_cond test1 exprs rest in
+		tag_parse_helper expanded_cond
+	(*let*)
+	| (Pair((Symbol("let")), (Pair(ribs, body)))) -> 
+		let expanded_let = expand_let ribs body in
+		tag_parse_helper expanded_let
+	(*let**)
+	| (Pair((Symbol("let*")), (Pair(ribs, body)))) -> 
+		let expanded_let_star = expand_let_star ribs body in
+		tag_parse_helper expanded_let_star
+	(*letrec*)
+	| (Pair((Symbol("letrec")), (Pair(ribs, body)))) -> 
+		let expanded_let_rec = expand_letrec ribs body in
+		tag_parse_helper expanded_let_rec
+	
+	
+	(*Applications*)
 	| (Pair(op, args)) -> (*application*)
 		(match args with
 		| Nil ->  Applic (tag_parse_helper op , [])
@@ -667,17 +758,10 @@ let rec tag_parse_helper sexpr =
 			let mapped_args = List.map tag_parse_helper args_ocaml_list in
 			Applic (tag_parse_helper op , mapped_args)
 		| _ -> raise X_syntax_error
-		);;
+		)
+	
+	| _ -> X_this_should_not_happen;;
 
-
-	| Pair(Symbol name, Pair(e1, Nil)) -> (match name with 
-					| "quote" -> "'" ^ (sexpr_to_string_helper e1)
-					| "quasiquote" -> "`" ^ (sexpr_to_string_helper e1)
-					| "unquote-splicing" -> ",@" ^ (sexpr_to_string_helper e1)
-					| "unquote" -> "," ^ (sexpr_to_string_helper e1)
-					| _ -> let e2 = Pair(e1, Nil) in 
-							"(" ^ (sexpr_to_string_helper e1) ^ " " ^ (sexpr_to_string_helper e2) ^ ")")
-	| Vector es -> "#(" ^ (List.fold_right (fun s1 s2 -> s1^" "^s2) (List.map sexpr_to_string_helper es) "") ^ ")";;
 
 
 (* tag_parse : sexpr -> expr *)
@@ -688,7 +772,7 @@ let read_expression string = tag_parse (Parser.read_sexpr string);;
 
 let read_expressions string = List.map tag_parse (Parser.read_sexprs string);;
 
-let expression_to_string expr = raise X_not_yet_implemented;;
+let expression_to_string expr = "str";;
   
 end;; (* struct Tag_Parser *)
 
