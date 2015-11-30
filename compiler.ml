@@ -94,8 +94,15 @@ let rec sexpr_to_string_helper sexpr =
 					| "unquote" -> "," ^ (sexpr_to_string_helper e1)
 					| _ -> let e2 = Pair(e1, Nil) in 
 							"(" ^ (sexpr_to_string_helper e1) ^ " " ^ (sexpr_to_string_helper e2) ^ ")")
-	| Pair(e1, e2) -> "(" ^ (sexpr_to_string_helper e1) ^ " " ^ (sexpr_to_string_helper e2) ^ ")"
-	| Vector es -> "#(" ^ (List.fold_right (fun s1 s2 -> s1^" "^s2) (List.map sexpr_to_string_helper es) "") ^ ")";;
+	| Pair(_, _) as pair -> "(" ^ (pair_to_string pair) ^ ")"
+	| Vector es -> "#(" ^ (List.fold_right (fun s1 s2 -> s1^" "^s2) (List.map sexpr_to_string_helper es) "") ^ ")"
+	
+and pair_to_string sexpr = 
+	(*returns application of sexpr_to_string_helper on every exp in the pair list*)
+	match sexpr with
+	| Pair(e1, Nil) -> (sexpr_to_string_helper e1) (*proper list*)
+	| Pair(e1, Pair(e2,_)) -> (sexpr_to_string_helper e1) ^ (pair_to_string pair)
+	| Pair(e1, e2) -> (sexpr_to_string_helper e1) ^ "." ^(sexpr_to_string_helper e2) (*improper list*);;
 	
 let sexpr_to_string sexpr = sexpr_to_string_helper sexpr;;
 	
